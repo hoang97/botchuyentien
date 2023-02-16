@@ -1,0 +1,4 @@
+env/
+db/
+getapi.py
+test.py
