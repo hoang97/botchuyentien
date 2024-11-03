@@ -1,4 +1,6 @@
 env/
 db/
+__pycache__/
 getapi.py
 test.py
+settings.yaml
