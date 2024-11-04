@@ -1,19 +1,7 @@
 version: "3.8"
 services:
-  sqlite:
-    image: nouchka/sqlite3:latest
-    stdin_open: true
-    tty: true
-    volumes:
-      - ./db/:/root/db/
-    ports:
-      - '9000:9000' # expose ports - HOST:CONTAINER
-    restart: unless-stopped
   app:
-    build:
-      dockerfile: ./Dockerfile
-      context: ./
-    command: python ./telegram_bot.py
+    image: 1805111/botchuyentien
     volumes:
-      - ./db/:/home/app/db/
+      - ./settings.yaml:/home/app/settings.yaml
     restart: on-failure
