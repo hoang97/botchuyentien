@@ -1,16 +1,13 @@
-import logging, pytz, sys
-from typing import Coroutine
+import logging, pytz
 from datetime import datetime
 from inspect import cleandoc
 from functools import wraps
 from copy import deepcopy
 
 from telegram import Update
-from telegram._utils.logging import get_logger
 from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from utils import *
-from typing import Any
 
 TIMEZONE = pytz.timezone('Europe/Moscow')
 
@@ -92,31 +89,40 @@ async def alarm(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def check_bybit_balance(context: ContextTypes.DEFAULT_TYPE) -> None:
-    config = context.bot_data
-    job = context.job
-    account = job.data
-    change_balance = account.query_change_balance()
-    unified = change_balance["unified"]
-    fund = change_balance["fund"]
-    for key in unified.keys():
-        if unified[key] > 0:
-            op = "nhận được"
-            icon = "🚀"
-        else:
-            op = "gửi đi"
-            icon = "🔻"
-        message = f"{icon} *Tài khoản {account.username}*: {op} *{abs(unified[key])} {key}* từ tài khoản giao dịch hợp nhất"
-        await context.bot.send_message(config.tele_admin_group, message, parse_mode='markdown')
+    try:
+        config = context.bot_data
+        job = context.job
+        account = job.data
+        fund = change_balance["fund"]
+        change_balance = account.query_change_balance()
+        unified = change_balance["unified"]
+        fund = change_balance["fund"]
+        fund = change_balance["fund"]
+        timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        for key in unified.keys():
+            if unified[key] > 0:
+                op = "nhận được"
+                icon = "🚀"
+            else:
+                op = "gửi đi"
+                icon = "🔻"
+            message = f"{icon} *Tài khoản {account.username}*: {op} *{abs(unified[key])} {key}* từ tài khoản giao dịch hợp nhất"
+            await context.bot.send_message(config.tele_admin_group, message, parse_mode='markdown')
 
-    for key in fund.keys():
-        if fund[key] > 0:
-            op = "nhận được"
-            icon = "🚀"
-        else:
-            op = "gửi đi"
-            icon = "🔻"
-        message = f"{icon} *Tài khoản {account.username}*: {op} *{abs(fund[key])} {key}* từ tài khoản funding"
-        await context.bot.send_message(config.tele_admin_group, message, parse_mode='markdown')
+        for key in fund.keys():
+            if fund[key] > 0:
+                op = "nhận được"
+                icon = "🚀"
+            else:
+                op = "gửi đi"
+                icon = "🔻"
+            message = f"{icon} *Tài khoản {account.username}*: {op} *{abs(fund[key])} {key}* từ tài khoản funding"
+            await context.bot.send_message(config.tele_admin_group, message, parse_mode='markdown')
+
+        
+    except Exception as e:
+        await context.bot.send_message(f"*Tài khoản {account.username}*: đã tạm dừng do lỗi\n{e}", parse_mode='markdown')
+        job.schedule_removal()
 
 
 def remove_job_if_exists(name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
