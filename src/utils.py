@@ -1,9 +1,7 @@
-import yaml, asyncio, websockets, json, hmac, hashlib
+import yaml
 import requests
 import pandas as pd
-from pathlib import Path
-from time import sleep
-from datetime import datetime
+import pygsheets
 from pybit.unified_trading import HTTP
 
 
@@ -41,6 +39,19 @@ def get_coin_from_response(resp):
         result[item["coin"]] = item["walletBalance"]
     return result
 
+
+class GoogleSheet:
+
+    def __init__(self, name, cred_path) -> None:
+        self.name = name
+        self.cred_path = cred_path
+        client = pygsheets.authorize(service_file=cred_path)
+        self.wks = client.open(name).sheet1
+    
+    def insert_row(self, data):
+        print(data)
+        self.wks.append_table(values=data, overwrite=True)
+        # self.wks.insert_rows(self.wks.rows, values=data, inherit=True)
 
 class Config:
     path = "settings.yaml"
@@ -165,12 +176,17 @@ if __name__ == "__main__":
     # [_, _, vnd2usdt, usdt2rub] = p2p.get_detail_rate()
     # print(vnd2usdt)
     # print(usdt2rub)
-    sessions = BybitAccount.load_sessions()
-    username = 'testwallet'
-    key = sessions[username]['key']
-    # key = "abc"
-    secret = sessions[username]['secret']
-    # print(username, key, secret)
-    account = BybitAccount(username, key, secret)
-    
-    print(account.query_change_balance())
+
+    # sessions = BybitAccount.load_sessions()
+    # username = 'testwallet'
+    # key = sessions[username]['key']
+    # # key = "abc"
+    # secret = sessions[username]['secret']
+    # # print(username, key, secret)
+    # account = BybitAccount(username, key, secret)
+    # print(account.query_change_balance())
+
+    ggsheet = GoogleSheet('bybit_accounts', 'cred.json')
+    ggsheet.insert_row(['hoangdb1', 'nhận được', '100', 'USDT', 'FUNDING', '16/11/2024 10:10:10'])
+    # ggsheet.insert_row([1,2,3,4,5])
+

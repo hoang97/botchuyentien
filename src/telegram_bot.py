@@ -89,15 +89,14 @@ async def alarm(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def check_bybit_balance(context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = context.bot_data
+    ggsheet = config.ggsheet
+    job = context.job
+    account = job.data
     try:
-        config = context.bot_data
-        job = context.job
-        account = job.data
-        fund = change_balance["fund"]
         change_balance = account.query_change_balance()
+        fund = change_balance["fund"]
         unified = change_balance["unified"]
-        fund = change_balance["fund"]
-        fund = change_balance["fund"]
         timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         for key in unified.keys():
             if unified[key] > 0:
@@ -108,6 +107,7 @@ async def check_bybit_balance(context: ContextTypes.DEFAULT_TYPE) -> None:
                 icon = "🔻"
             message = f"{icon} *Tài khoản {account.username}*: {op} *{abs(unified[key])} {key}* từ tài khoản giao dịch hợp nhất"
             await context.bot.send_message(config.tele_admin_group, message, parse_mode='markdown')
+            ggsheet.insert_row([account.username, op, abs(unified[key]), key, 'UNIFIED', timestamp])
 
         for key in fund.keys():
             if fund[key] > 0:
@@ -118,10 +118,10 @@ async def check_bybit_balance(context: ContextTypes.DEFAULT_TYPE) -> None:
                 icon = "🔻"
             message = f"{icon} *Tài khoản {account.username}*: {op} *{abs(fund[key])} {key}* từ tài khoản funding"
             await context.bot.send_message(config.tele_admin_group, message, parse_mode='markdown')
-
+            ggsheet.insert_row([account.username, op, abs(unified[key]), key, 'FUNDING', timestamp])
         
     except Exception as e:
-        await context.bot.send_message(f"*Tài khoản {account.username}*: đã tạm dừng do lỗi\n{e}", parse_mode='markdown')
+        await context.bot.send_message(config.tele_admin_group, f"*Tài khoản {account.username}*: đã tạm dừng do lỗi\n{e}", parse_mode='markdown')
         job.schedule_removal()
 
 
@@ -334,7 +334,7 @@ def main() -> None:
     # Create the Application and pass it your bot's token.
     config = Config()
     config.p2p = BybitP2P(config.bybit_cookie)
-    config.bybit_queue = {}
+    config.ggsheet = GoogleSheet('bybit_accounts', 'cred.json')
     application = Application.builder().token(config.tele_token).build()
     application.bot_data = config
 

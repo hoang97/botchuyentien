@@ -5,3 +5,4 @@ getapi.py
 test.py
 settings.yaml
 sessions.yaml
+cred.json
