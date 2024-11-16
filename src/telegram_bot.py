@@ -118,7 +118,7 @@ async def check_bybit_balance(context: ContextTypes.DEFAULT_TYPE) -> None:
                 icon = "🔻"
             message = f"{icon} *Tài khoản {account.username}*: {op} *{abs(fund[key])} {key}* từ tài khoản funding"
             await context.bot.send_message(config.tele_admin_group, message, parse_mode='markdown')
-            ggsheet.insert_row([account.username, op, abs(unified[key]), key, 'FUNDING', timestamp])
+            ggsheet.insert_row([account.username, op, abs(fund[key]), key, 'FUNDING', timestamp])
         
     except Exception as e:
         await context.bot.send_message(config.tele_admin_group, f"*Tài khoản {account.username}*: đã tạm dừng do lỗi\n{e}", parse_mode='markdown')

@@ -4,4 +4,5 @@ services:
     image: 1805111/botchuyentien
     volumes:
       - ./settings.yaml:/home/app/settings.yaml
+      - ./cred.json:/home/app/cred.json
     restart: on-failure
