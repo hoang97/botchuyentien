@@ -1,6 +1,10 @@
-import yaml
+import yaml, asyncio, websockets, json, hmac, hashlib
 import requests
 import pandas as pd
+from pathlib import Path
+from time import sleep
+from datetime import datetime
+from pybit.unified_trading import HTTP
 
 
 def add_profit(rate, profit):
@@ -54,9 +58,92 @@ class Config:
 
 
 class BybitAccount:
-    api_token = ""
+    path = "sessions.yaml"
+    uri = "wss://stream.bybit.com/v5/private"
+    
+    def __init__(self, username, api_key, api_secret) -> None:
+        self.username = username
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.obj = self.load_sessions()
 
-    pass
+    @classmethod
+    def load_sessions(cls):
+        if not Path(cls.path).is_file():
+            open(cls.path, "x")
+        with open(cls.path, "r") as stream:
+            obj = yaml.safe_load(stream)
+        if obj == None: obj = {}
+        return obj
+
+    def save(self):
+        self.obj[self.username] = {
+            "key": self.api_key,
+            "secret": self.api_secret
+        }
+        with open(self.path, "w", encoding="utf8") as stream:
+            yaml.dump(self.obj, stream, default_flow_style=False, allow_unicode=True)
+
+    def remove(self):
+        self.obj.pop(self.username, None)
+        with open(self.path, "w", encoding="utf8") as stream:
+            yaml.dump(self.obj, stream, default_flow_style=False, allow_unicode=True)
+
+    def query_coin_balance(self):
+        session = HTTP(
+            api_key=self.api_key,
+            api_secret=self.api_secret,
+        )
+        self.unified = session.get_coins_balance(accountType="UNIFIED")
+        self.fund = session.get_coins_balance(accountType="FUND")
+
+    async def authenticate(self):
+        api_key = self.api_key
+        api_secret = self.api_secret
+        expires = int((datetime.now().timestamp() + 10) * 1000)  # Expires in 10 seconds
+        signature = hmac.new(api_secret.encode(), f'GET/realtime{expires}'.encode(), hashlib.sha256).hexdigest()
+
+        auth_msg = {
+            "reqId": "auth",
+            "op": "auth",
+            "args": [api_key, expires, signature]
+        }
+
+        self.ws = await websockets.connect(self.uri)
+        await self.ws.send(json.dumps(auth_msg))
+        response = await self.ws.recv()
+        return json.loads(response)
+
+    async def send_subscription(self, topic):
+        sub_msg = {
+            "op": "subscribe",
+            "args": [topic]
+        }
+
+        await self.ws.send(json.dumps(sub_msg))
+        print(f"Subscription message for user {self.username} sent.")
+
+    async def keep_alive(self):
+        while True:
+            await self.ws.send(json.dumps({'op': 'ping'}))
+            await asyncio.sleep(10)  # Sleep for 10 seconds
+
+    async def listen_messages(self, bot, chat_id):
+        while True:
+            message = await self.ws.recv()
+            resp = json.loads(message)
+            # if resp.get('op', None) not in ['pong', 'subscribe']:
+            if resp.get('op', None) not in ['pong']:
+                await bot.send_message(chat_id, text = f"Message received: {message}")
+
+    async def subcribe_wallet_stream(self, bot, chat_id):
+        try:
+            await self.send_subscription('wallet')
+            listen_task = asyncio.create_task(self.listen_messages(bot, chat_id))
+            ping_task = asyncio.create_task(self.keep_alive())
+            await asyncio.gather(listen_task, ping_task, return_exceptions=True)
+        except Exception as e:
+            await bot.send_message(chat_id, text = f"Error: {e}")
 
 
 class BybitP2P:
@@ -113,14 +200,41 @@ class BybitP2P:
 
 
 if __name__ == "__main__":
-    config = Config()
+    # config = Config()
     # print(config.obj)
     # config.update({'a': 456})
     # config.reload()
     # print(config.obj)
-    p2p = BybitP2P(config.bybit_cookie)
+    # p2p = BybitP2P(config.bybit_cookie)
     # offers = p2p.get_offer(0, 'USDT', 'VND', 100)
     # print(offers)
-    [_, _, vnd2usdt, usdt2rub] = p2p.get_detail_rate()
-    print(vnd2usdt)
-    print(usdt2rub)
+    # [_, _, vnd2usdt, usdt2rub] = p2p.get_detail_rate()
+    # print(vnd2usdt)
+    # print(usdt2rub)
+    sessions = BybitAccount.load_sessions()
+    username = 'testwallet'
+    key = sessions[username]['key']
+    # key = "abc"
+    secret = sessions[username]['secret']
+    # print(username, key, secret)
+    account = BybitAccount(username, key, secret)
+    # account.save()
+    # account.remove()
+
+    # async def test():
+    #     resp = await account.authenticate()
+    #     if resp["success"]:
+    #         await account.subcribe_wallet_stream()
+    #     else:
+    #         print("Authentication Failure")
+
+    # asyncio.run(test())
+
+    # asyncio.new_event_loop().run_until_complete(account.send_subscription('wallet'))
+    # asyncio.run(account.subcribe_wallet_stream())
+    # asyncio.run(account.subcribe_wallet_stream())
+    # account.subcribe_wallet_stream()
+    
+    account.query_coin_balance()
+    print(account.unified)
+    print(account.fund)

@@ -4,3 +4,4 @@ __pycache__/
 getapi.py
 test.py
 settings.yaml
+sessions.yaml

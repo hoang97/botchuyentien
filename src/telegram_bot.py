@@ -1,13 +1,16 @@
-import logging, pytz
+import logging, pytz, sys
+from typing import Coroutine
 from datetime import datetime
 from inspect import cleandoc
 from functools import wraps
 from copy import deepcopy
 
 from telegram import Update
+from telegram._utils.logging import get_logger
 from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from utils import *
+from typing import Any
 
 TIMEZONE = pytz.timezone('Europe/Moscow')
 
@@ -15,6 +18,7 @@ TIMEZONE = pytz.timezone('Europe/Moscow')
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
+
 
 def is_admin(func):
     """Decorator to check Admin"""
@@ -41,13 +45,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         /admin - xem danh sách Admin 
         /add_admin - <username> - thêm mới 1 admin
         /remove_admin - <username> - xóa 1 admin cũ
+        /login - <username> <api_key> <api_secret> - đăng nhập tài khoản Bybit
+        /logout - <username> - đăng xuất tài khoản Bybit
+        /account - danh sách các Bybit account đang hiện có
     '''
     await update.message.reply_text(cleandoc(explanation))
 
 
 async def alarm(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send the alarm message."""
-    job = context.job
     config = context.bot_data
     p2p = config.p2p
     profit = config.profit_percent
@@ -95,18 +101,32 @@ def remove_job_if_exists(name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
     return True
 
 
+def logout_account_if_exists(username: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Remove job with given name. Returns whether job was removed."""
+    current_jobs = context.bot_data.bybit_queue
+    if current_jobs:
+        job = current_jobs.pop(username, None)
+        if job:
+            job['task'].cancel()
+            job['account'].remove()
+            return True
+    return False
+
+
 @is_admin
 async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Add a job to the queue."""
+    config = context.bot_data
     chat_id = update.effective_message.chat_id
+    job_name = f"Schedule channel {config.tele_channel}"
     try:
         interval = int(context.args[0])
         if interval < 0:
             await update.message.reply_text("Không thể đặt số âm !!!")
             return
 
-        job_removed = remove_job_if_exists(str(chat_id), context)
-        context.job_queue.run_repeating(alarm, interval=interval, chat_id=chat_id, name=str(chat_id), data=interval)
+        remove_job_if_exists(job_name, context)
+        context.job_queue.run_repeating(alarm, first=0, interval=interval, chat_id=chat_id, name=job_name)
 
         text = f"Lên lịch thành công, gửi thông báo lên channel sau mỗi {interval} giây"
         await update.message.reply_text(text)
@@ -118,8 +138,9 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 @is_admin
 async def unset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Remove the job if the user changed their mind."""
-    chat_id = update.message.chat_id
-    job_removed = remove_job_if_exists(str(chat_id), context)
+    config = context.bot_data
+    job_name = f"Schedule channel {config.tele_channel}"
+    job_removed = remove_job_if_exists(job_name, context)
     text = "Đã dừng gửi thông báo lên channel" if job_removed else "Hiện không có lịch nào để hủy"
     await update.message.reply_text(text)
 
@@ -241,8 +262,55 @@ async def current_rate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     except (IndexError, ValueError):
         await update.message.reply_text("Usage: /rate <profit percent>")
 
+
+async def list_bybit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    jobs = context.bot_data.bybit_queue
+    accounts = jobs.keys()
+    msg = f"Hiện có {len(accounts)} account đang chạy"
+    for username in accounts:
+        msg += f"\n- {username}"
+    await update.message.reply_text(msg)
+
+
 async def login_bybit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    pass
+    chat_id = update.effective_message.chat_id
+    current_jobs = context.bot_data.bybit_queue
+    try:
+        username = str(context.args[0])
+        api_key = str(context.args[1])
+        api_secret = str(context.args[2])
+        account = BybitAccount(username, api_key, api_secret)
+
+        resp = await account.authenticate()
+        if resp["success"]:
+            logout_account_if_exists(username, context)
+            task = asyncio.create_task(account.subcribe_wallet_stream(context.bot, chat_id))
+            current_jobs[username] = {
+                'task': task,
+                'account': account
+            }
+        else:
+            await update.message.reply_text("Đăng nhập không thành công!!!")
+            return
+
+        account.save()
+        text = f"Đăng nhập account {username} thành công"
+        await update.message.reply_text(text)
+
+    except Exception as e:
+        if type(e) in (IndexError, ValueError):
+            await update.message.reply_text("Usage: /login <username> <api_key> <api_secret>")
+        else:
+            await update.message.reply_text(f"Login has error: {e}")
+
+
+async def logout_bybit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        username = str(context.args[0])
+        logout_account_if_exists(username, context)
+        await update.message.reply_text(f"Đăng xuất thành công account {username}")
+    except (IndexError, ValueError):
+        await update.message.reply_text("Usage: /logout <username>")
 
 
 def main() -> None:
@@ -250,6 +318,7 @@ def main() -> None:
     # Create the Application and pass it your bot's token.
     config = Config()
     config.p2p = BybitP2P(config.bybit_cookie)
+    config.bybit_queue = {}
     application = Application.builder().token(config.tele_token).build()
     application.bot_data = config
 
@@ -262,12 +331,13 @@ def main() -> None:
     application.add_handler(CommandHandler("add_admin", add_admin))
     application.add_handler(CommandHandler("remove_admin", remove_admin))
     application.add_handler(CommandHandler("rate", current_rate))              # get exchange rate with profit
-    application.add_handler(CommandHandler("login", login_bybit))             # login bybit
+    application.add_handler(CommandHandler("account", list_bybit))
+    application.add_handler(CommandHandler("login", login_bybit))
+    application.add_handler(CommandHandler("logout", logout_bybit))
     application.add_handler(CommandHandler("stop", unset))
 
     # Run the bot until the user presses Ctrl-C
     application.run_polling(allowed_updates=Update.ALL_TYPES)
-
 
 if __name__ == "__main__":
     main()
