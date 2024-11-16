@@ -91,6 +91,34 @@ async def alarm(context: ContextTypes.DEFAULT_TYPE) -> None:
         await context.bot.send_message(config.tele_admin_group, text="Tỷ giá nằm ngoài range đã định")
 
 
+async def check_bybit_balance(context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = context.bot_data
+    job = context.job
+    account = job.data
+    change_balance = account.query_change_balance()
+    unified = change_balance["unified"]
+    fund = change_balance["fund"]
+    for key in unified.keys():
+        if unified[key] > 0:
+            op = "nhận được"
+            icon = "🚀"
+        else:
+            op = "gửi đi"
+            icon = "🔻"
+        message = f"{icon} *Tài khoản {account.username}*: {op} *{abs(unified[key])} {key}* từ tài khoản giao dịch hợp nhất"
+        await context.bot.send_message(config.tele_admin_group, message, parse_mode='markdown')
+
+    for key in fund.keys():
+        if fund[key] > 0:
+            op = "nhận được"
+            icon = "🚀"
+        else:
+            op = "gửi đi"
+            icon = "🔻"
+        message = f"{icon} *Tài khoản {account.username}*: {op} *{abs(fund[key])} {key}* từ tài khoản funding"
+        await context.bot.send_message(config.tele_admin_group, message, parse_mode='markdown')
+
+
 def remove_job_if_exists(name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Remove job with given name. Returns whether job was removed."""
     current_jobs = context.job_queue.get_jobs_by_name(name)
@@ -99,18 +127,6 @@ def remove_job_if_exists(name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
     for job in current_jobs:
         job.schedule_removal()
     return True
-
-
-def logout_account_if_exists(username: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Remove job with given name. Returns whether job was removed."""
-    current_jobs = context.bot_data.bybit_queue
-    if current_jobs:
-        job = current_jobs.pop(username, None)
-        if job:
-            job['task'].cancel()
-            job['account'].remove()
-            return True
-    return False
 
 
 @is_admin
@@ -148,11 +164,11 @@ async def unset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def show_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show current running config"""
     config = context.bot_data.obj
-    text = 'Thông số cài đặt hiện tại:\n'
+    text = '*Thông số cài đặt hiện tại:*\n'
     for key in config.keys():
         if not key.startswith('_'):
             text += f'- {key}: {config[key]}\n'
-    await update.message.reply_text(text)
+    await update.message.reply_text(text, parse_mode='markdown')
 
 
 @is_admin
@@ -264,8 +280,11 @@ async def current_rate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def list_bybit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    jobs = context.bot_data.bybit_queue
-    accounts = jobs.keys()
+    jobs = list(context.job_queue.jobs())
+    accounts = []
+    for job in jobs:
+        if job.name.startswith("Account"):
+            accounts.append(job.name)
     msg = f"Hiện có {len(accounts)} account đang chạy"
     for username in accounts:
         msg += f"\n- {username}"
@@ -274,26 +293,15 @@ async def list_bybit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def login_bybit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_message.chat_id
-    current_jobs = context.bot_data.bybit_queue
     try:
         username = str(context.args[0])
         api_key = str(context.args[1])
         api_secret = str(context.args[2])
+        job_name = f"Account {username}"
         account = BybitAccount(username, api_key, api_secret)
+        remove_job_if_exists(job_name, context)
+        context.job_queue.run_repeating(check_bybit_balance, first=0, interval=3, chat_id=chat_id, name=job_name, data=account)
 
-        resp = await account.authenticate()
-        if resp["success"]:
-            logout_account_if_exists(username, context)
-            task = asyncio.create_task(account.subcribe_wallet_stream(context.bot, chat_id))
-            current_jobs[username] = {
-                'task': task,
-                'account': account
-            }
-        else:
-            await update.message.reply_text("Đăng nhập không thành công!!!")
-            return
-
-        account.save()
         text = f"Đăng nhập account {username} thành công"
         await update.message.reply_text(text)
 
@@ -301,13 +309,15 @@ async def login_bybit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if type(e) in (IndexError, ValueError):
             await update.message.reply_text("Usage: /login <username> <api_key> <api_secret>")
         else:
-            await update.message.reply_text(f"Login has error: {e}")
+            await update.message.reply_text(f"Đăng nhập lỗi: {e}")
 
 
 async def logout_bybit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.effective_message.chat_id
     try:
         username = str(context.args[0])
-        logout_account_if_exists(username, context)
+        job_name = f"Account {username}"
+        remove_job_if_exists(job_name, context)
         await update.message.reply_text(f"Đăng xuất thành công account {username}")
     except (IndexError, ValueError):
         await update.message.reply_text("Usage: /logout <username>")
