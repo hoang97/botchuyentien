@@ -133,7 +133,7 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
 
         remove_job_if_exists(job_name, context)
-        context.job_queue.run_repeating(alarm, first=0, interval=interval, chat_id=chat_id, name=job_name)
+        context.job_queue.run_repeating(alarm, first=1, interval=interval, chat_id=chat_id, name=job_name)
 
         text = f"Lên lịch thành công, gửi thông báo lên channel sau mỗi {interval} giây"
         await update.message.reply_text(text)
