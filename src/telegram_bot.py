@@ -52,40 +52,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def alarm(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send the alarm message."""
     config = context.bot_data
-    p2p = config.p2p
-    profit = config.profit_percent
-    rate = p2p.get_exchange_rate()
-    vnd_min = config.vnd_min
-    vnd_max = config.vnd_max
-    rub_min = config.rub_min
-    rub_max = config.rub_max
-    market_vnd = config.market_vnd
-    market_rub = config.market_rub
-    current_rate = get_rate(profit, rate, vnd_min, vnd_max, rub_min, rub_max, market_vnd, market_rub)
-    if current_rate:
-        [vnd2rub_vnd, vnd2rub_rub, rub2vnd_vnd, rub2vnd_rub] = current_rate
-        msg = f'''
+    [rub, vnd, vnd2usdt, usdt2rub] = config.p2p.get_detail_rate()
+
+    msg = f'''
 🔥 Cập nhật tỷ giá {datetime.now(pytz.utc).astimezone(TIMEZONE).strftime("%d/%m/%Y, %H:%M")} Moscow 🔥
 
-🔥  Tỷ giá Chuyển tiền Việt - Nga 🔥
+🔥  Tỷ giá Chuyển tiền Bybit 🔥
     
-        💰 VND-RUB: {round(vnd2rub_vnd/100)*100} / {round(vnd2rub_rub)} 😍
+        💰 RUB-USDT: {rub} 😍
 
-        💰 RUB-VND: {round(rub2vnd_rub)} / {round(rub2vnd_vnd/100)*100} 😍
+        💰 USDT-VND: {vnd} 😍
 
-👇 Để chuyển tiền vui lòng liên hệ 👇
-        '''
-        keyboard = [
-            [
-                InlineKeyboardButton("Telegram", url='https://t.me/annguyento'),
-                InlineKeyboardButton("Facebook", url='https://www.facebook.com/chuyentienSPB')
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+👇 Top các lệnh trên Bybit 👇
+'''
+    for _, row in usdt2rub.iterrows():
+        msg += f"\n       💰 RUB-USDT: {row['nickName']} {row['price']} {row['recentExecuteRate']}%\n"
+    for _, row in vnd2usdt.iterrows():
+        msg += f"\n       💰 USDT-VND: {row['nickName']} {row['price']} {row['recentExecuteRate']}%\n"
 
-        await context.bot.send_message(config.tele_channel, text=msg, reply_markup=reply_markup)
-    else:
-        await context.bot.send_message(config.tele_admin_group, text="Tỷ giá nằm ngoài range đã định")
+    await context.bot.send_message(config.tele_channel, text=msg)
 
 
 async def check_bybit_balance(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -186,13 +171,6 @@ async def update_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         error = ""
         if value < 0:
             error = f"{key} không thể âm"
-        else:
-            config_obj = deepcopy(config.obj)
-            config_obj[key] = value
-            if (config_obj['MARKET_VND'] > config_obj['VND_MAX']) or (config_obj['MARKET_VND'] < config_obj['VND_MIN']):
-                error = f"MARKET_VND không nằm trong range {config_obj['VND_MIN']} - {config_obj['VND_MAX']}"
-            if (config_obj['MARKET_RUB'] > config_obj['RUB_MAX']) or (config_obj['MARKET_RUB'] < config_obj['RUB_MIN']):
-                error = f"MARKET_RUB không nằm trong range {config_obj['RUB_MIN']} - {config_obj['RUB_MAX']}"
             
         if error:
             await update.message.reply_text(f"Đổi cấu hình không thành công:\n- {error}")

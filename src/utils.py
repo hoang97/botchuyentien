@@ -7,20 +7,6 @@ from pybit.unified_trading import HTTP
 
 def add_profit(rate, profit):
     return rate * (1 - profit/100)
-
-def get_rate(profit, base_rate, vnd_min, vnd_max, rub_min, rub_max, market_vnd, market_rub):
-    rate = add_profit(base_rate, profit)
-    rate_not_in_range = (vnd_max*rate < rub_min) | (vnd_min*rate > rub_max)
-    if rate_not_in_range:
-        return None
-    else:
-        base_vnd = market_vnd
-        if base_vnd*rate < rub_min:
-            base_vnd = vnd_max
-        elif base_vnd*rate > rub_max:
-            base_vnd = vnd_min
-        base_rub = base_vnd*rate
-        return [base_vnd + 300, base_rub, base_vnd, base_rub]
     
 def get_changed_value(A, B):
     keys = set(A.keys())
@@ -68,10 +54,6 @@ class Config:
         self.tele_channel = self.obj['_TELE_CHANNEL']
         self.tele_admin_group = self.obj['_TELE_ADMIN_GROUP']
         self.profit_percent = self.obj['PROFIT_PERCENT']
-        self.vnd_min = self.obj['VND_MIN']
-        self.vnd_max = self.obj['VND_MAX']
-        self.rub_min = self.obj['RUB_MIN']
-        self.rub_max = self.obj['RUB_MAX']
         self.market_vnd = self.obj['MARKET_VND']
         self.market_rub = self.obj['MARKET_RUB']
         
@@ -123,7 +105,7 @@ class BybitP2P:
 
         :param side: 0 (buy) or 1(sell)
         :param tokenId: ID của token muốn mua hoặc bán (USDT, ETH, BTC, ...)
-        :param currencyId: IDvnd_min của tiền mặt (VND, RUB, ...)
+        :param currencyId: ID của tiền mặt (VND, RUB, ...)
         :return: offers: Danh sách các P2P offers
         """
         data = {
