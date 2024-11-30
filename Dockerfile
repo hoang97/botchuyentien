@@ -8,4 +8,4 @@ RUN pip install -r requirements.txt
 
 COPY ./src/* /home/app
 
-CMD ["python", "telegram_bot.py"]
+CMD ["python3", "telegram_bot.py"]

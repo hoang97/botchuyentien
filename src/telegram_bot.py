@@ -97,7 +97,7 @@ async def check_bybit_balance(context: ContextTypes.DEFAULT_TYPE) -> None:
         change_balance = account.query_change_balance()
         fund = change_balance["fund"]
         unified = change_balance["unified"]
-        timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        timestamp = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
         for key in unified.keys():
             if unified[key] > 0:
                 op = "nhận được"
@@ -170,11 +170,11 @@ async def unset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def show_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show current running config"""
     config = context.bot_data.obj
-    text = '*Thông số cài đặt hiện tại:*\n'
+    text = 'Thông số cài đặt hiện tại:\n'
     for key in config.keys():
         if not key.startswith('_'):
             text += f'- {key}: {config[key]}\n'
-    await update.message.reply_text(text, parse_mode='markdown')
+    await update.message.reply_text(text)
 
 
 @is_admin
